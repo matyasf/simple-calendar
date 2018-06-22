@@ -1,0 +1,230 @@
+<html>
+<head>
+    <style>
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+            background-color: lightslategrey;
+            grid-gap: 3pt;
+        }
+
+        .calendar-cell {
+            border-radius: 2px;
+            padding: 1pt;
+            background-color: aliceblue;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* The cell for the day today */
+        .calendar-currentDay {
+            outline: 3px solid aquamarine;
+        }
+
+        /* The days in the displayed month */
+        .calendar-displayed-month {
+            background-color: rebeccapurple;
+        }
+
+        /* The previous month button */
+        .calendar-prev-button {
+        }
+
+        /* The current month text */
+        .calendar-current-month {
+        }
+
+        /* The go to current month button */
+        .calendar-now-button {
+        }
+
+        /* The next month button */
+        .calendar-next-button {
+        }
+
+        /* Sample highlight 1 */
+        .cell-test-1 {
+            background-color: brown;
+        }
+
+        /* Sample highlight 2 */
+        .cell-test-2 {
+            font-style: italic;
+            font-weight: bolder;
+        }
+    </style>
+</head>
+<body>
+
+<div id="calendar"></div>
+
+<script type="text/javascript">
+
+window.addEventListener("load", function () {
+
+    new SimpleCalendar("calendar", new Date(),
+        {onDayClick: function(event, date) { console.log("test " + date);},
+         daysToStyle: [{cssClassName:'cell-test-1', days:[new Date(2018,5,12), new Date(2018,5,27)]},
+                       {cssClassName:'cell-test-2', days:[new Date(2018,5,2), new Date(2018,5,27), new Date(2018,6,3)]}]
+        });
+});
+
+/**
+ * A simple calendar component written in ES6 that does not have any dependencies
+ *
+ * Usage: new SimpleCalendar("parentDivId":String, aDateObject:Date, optional properties:Object)
+ * Properties object:
+ * onDayClick: A function with an event and a date argument. Invoked when a cell is clicked
+ * daysToStyle: An Array that holds data which days to style. It objects with the following properties:
+ *   'cssClassName' a CSS class name. These are applied after the cell styling
+ *   'days' is an array of Date objects. If a day has multiple styles all of them are applied
+ *
+ * For example:
+ * {
+ * onDayClick: myFunction,
+ * daysToStyle: [{cssClassName:'myCSSClass', days:[new Date(2018,5,22), new Date(2018,5,22)]},
+ *               {cssClassName:'anotherCSSCLass', days:[new Date(2018,5,22)]}]
+ * }
+ *
+ **/
+class SimpleCalendar {
+
+    constructor(_parentDiv, _dateToDisplay, _properties = null) {
+        this.dateToRender = null;
+        this.parentDiv = _parentDiv;
+        this.properties = _properties;
+        this.customStyleDict = {}; // has keys like 2018-4-12 and values like " my-css-class"
+
+        // constructor parameter validation
+        if (!(_dateToDisplay instanceof Date)) throw new Error("Date parameter must be a Date object!");
+        if (!(typeof _parentDiv === "string")) throw new Error("_parentDiv must be a String!");
+        if (this.properties){
+            if (!(this.properties.onDayClick instanceof Function)) throw new Error("onDayClick must be a function!");
+            if (!(this.properties.daysToStyle instanceof Array)) throw new Error("daysToStyle must be an array!");
+            if (this.properties.daysToStyle) {
+                for (let styleDef of this.properties.daysToStyle) {
+                    if (!(typeof styleDef.cssClassName === "string")) throw new Error("Every object in daysToStyle needs a style property!");
+                    if (!(styleDef.days instanceof Array)) throw new Error("Every object in daysToStyle needs a days Array!");
+                }
+            }
+        }
+
+        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const cal = document.getElementById(this.parentDiv);
+
+        // create top title bar
+        const header = `<div class="calendar-header">
+                            <div id="${this.parentDiv}PrevButton" class="calendar-prev-button">prev</div>
+                            <div id="${this.parentDiv}CurrMonth" class="calendar-current-month">?</div>
+                            <div id="${this.parentDiv}NowButton" class="calendar-now-button">now</div>
+                            <div id="${this.parentDiv}NextButton" class="calendar-next-button">next</div>
+                         </div>`;
+        cal.insertAdjacentHTML('beforeend', header);
+        cal.querySelector('#' + this.parentDiv + 'PrevButton').addEventListener("click", evt => this.onBackClick());
+        cal.querySelector('#' + this.parentDiv + 'NextButton').addEventListener("click", evt => this.onFwClick());
+        cal.querySelector('#' + this.parentDiv + 'NowButton').addEventListener("click", evt => this.onNowClick());
+
+        // create calendar grid
+        const grid = document.createElement('div');
+        grid.className = "calendar-grid";
+        cal.appendChild(grid);
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < 7; j++) {
+                let cellTxt = (i === 0) ? dayNames[j] : "";
+                grid.innerHTML += `<div id="${this.parentDiv}_cell_${i}${j}" class="calendar-cell">${cellTxt}</div>`;
+            }
+        }
+        // parse custom styles into customStyleDict
+        if (this.properties && this.properties.daysToStyle) {
+            for (let aStyle of this.properties.daysToStyle) {
+                for (let day of aStyle.days) {
+                    const currentKey = SimpleCalendar.getCalendarKey(day);
+                    if (this.customStyleDict[currentKey] === undefined) {
+                        this.customStyleDict[currentKey] = "";
+                    }
+                    this.customStyleDict[currentKey] += " " + aStyle.cssClassName;
+                }
+            }
+        }
+        this.renderCalendar(_dateToDisplay);
+    }
+
+    renderCalendar(_dateToRender) {
+        this.dateToRender = _dateToRender;
+        // determine where the 1st day of the month is
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+            'August', 'September', 'October', 'November', 'December'];
+        document.getElementById(this.parentDiv + "CurrMonth").innerHTML = _dateToRender.getFullYear() + " " + monthNames[_dateToRender.getMonth()];
+        const currentDayOfInCal = new Date(_dateToRender.getFullYear(), _dateToRender.getMonth(), 1);
+        let fDayPlace = currentDayOfInCal.getDay() - 1; // 0 = Sunday
+        if (fDayPlace === 0) {
+            fDayPlace = 6;
+        }
+        currentDayOfInCal.setDate(currentDayOfInCal.getDate() - fDayPlace);
+        // fill the calendar with values
+        const now = new Date();
+        for (let i = 1; i < 7; i++) {
+            for (let j = 0; j < 7; j++) {
+                const cell = document.getElementById(this.parentDiv + '_cell_' + i + j);
+                cell.innerHTML = currentDayOfInCal.getDate().toString();
+                cell.className = 'calendar-cell'; // reset
+                cell.onclick = evt => this._onCellClick(evt);
+                cell.dataset.date = currentDayOfInCal.getTime().toString();
+
+                // today
+                if (currentDayOfInCal.getFullYear() === now.getFullYear() &&
+                    currentDayOfInCal.getMonth() === now.getMonth() &&
+                    currentDayOfInCal.getDate() === now.getDate()) {
+                    cell.className += " calendar-currentDay";
+                }
+                // displayed month
+                if (currentDayOfInCal.getFullYear() === this.dateToRender.getFullYear() &&
+                    currentDayOfInCal.getMonth() === this.dateToRender.getMonth()) {
+                    cell.className += " calendar-displayed-month";
+                }
+                // apply custom styles if there are any
+                const currentKey = SimpleCalendar.getCalendarKey(currentDayOfInCal);
+                if (this.customStyleDict[currentKey]) {
+                    cell.className += this.customStyleDict[currentKey];
+                }
+                currentDayOfInCal.setDate(currentDayOfInCal.getDate() + 1);
+            }
+        }
+    }
+
+    onBackClick() {
+        this.dateToRender.setMonth(this.dateToRender.getMonth() - 1);
+        this.renderCalendar(this.dateToRender);
+    }
+
+    onFwClick() {
+        this.dateToRender.setMonth(this.dateToRender.getMonth() + 1);
+        this.renderCalendar(this.dateToRender);
+    }
+
+    onNowClick() {
+        this.dateToRender.setTime(new Date().getTime());
+        this.renderCalendar(this.dateToRender);
+    }
+
+    // private!
+    _onCellClick(event) {
+        const date = new Date();
+        date.setTime(Number(event.currentTarget.dataset.date));
+        if (this.properties && this.properties.onDayClick) {
+            this.properties.onDayClick(event, date);
+        }
+    };
+
+    // helper function to convert date to YYYY-MM-DD String
+    static getCalendarKey(date) {
+        return date.getFullYear() + "-" + date.getMonth() + "-" + date.getDate()
+    }
+}
+</script>
+
+</body>
+</html>
